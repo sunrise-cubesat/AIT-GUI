@@ -85,7 +85,7 @@ class CustomInstallCmd(install):
 
 setup(
     name = 'ait-gui',
-    version = '2.3.1',
+    version = '2.0.0+snr',
     description = description,
     long_description = long_description,
     long_description_content_type = 'text/x-rst',
@@ -98,7 +98,7 @@ setup(
     include_package_data = True,
 
     python_requires = '>=3.7.*',
-    install_requires = ['ait-core>=2.3.0'],
+    install_requires = ['ait-core>=2.0.0+snr'],
     extras_require = {
         'docs':  [
             'Sphinx==2.2.2',
