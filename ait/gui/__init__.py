@@ -846,43 +846,32 @@ def handle():
                 try:
                     name, delta, dntoeus, counter = session.deltas.popleft(timeout=30)
 
-                    #log.info("Name: %s" % name)
-                    #log.info("Data Delta: %s" % delta)
-                    #log.info("dntoeus: %s" % dntoeus)
-                    #log.info("Counter: %s" % counter)
-                    #log.info("Data: %s" % counter)
-                    for key in delta.keys():
-                        val = delta[key]
-                        val = "%s" % type(val)
-                        if (re.search(".*FieldList.*", val)):
-                            delta[key] = "Value not displayable"
-                            #log.info("Updated value of key: %s from delta" % key)
-                    #log.info("New Data Delta: %s" % delta)
+                    dumpable_map = {'packet': name,  # STR
+                                    'data': delta,  # DICT
+                                    'dntoeus': dntoeus,  # DICT
+                                    'counter': counter  # INT
+                                    }
 
-                    for key in dntoeus.keys():
-                        val = dntoeus[key]
-                        val = "%s" % type(val)
-                        if (re.search(".*FieldList.*", val)):
-                            dntoeus[key] = "Value not displayable"
-                            #log.info("Updated value of key: %s from dntoeus" % key)
-                    #log.info("New dntoeus: %s" % dntoeus)
-
-                    try:
-                        json.dumps({
-                            'packet': name,
-                            'data': delta,
-                            'dntoeus': dntoeus,
-                            'counter': counter})
-                    except:
-                        log.info("JSON DUMPS exception")
-                        continue
-
-                    wsock.send(json.dumps({
-                        'packet': name,
-                        'data': delta,
-                        'dntoeus': dntoeus,
-                        'counter': counter
-                    }))
+                    # need to make dumpable_map dumpable
+                    def dict_values_bytes_to_strings(d):
+                        for k, v in d.items():
+                            if isinstance(v, tlm.FieldList):
+                                # This causes a critical error if dntoeu is defined 
+                                # for i in v:
+                                #     print(i)
+                                # d[k] = str(v)
+                                d[k] = "FieldList Unsupported"
+                            elif isinstance(v, dict):
+                                d[k] = dict_values_bytes_to_strings(v)
+                            elif isinstance(v, bytes):
+                                d[k] = v.decode('utf-8')
+                            else:
+                                d[k] = v
+                        return d
+                    
+                    dumpable_map = dict_values_bytes_to_strings(dumpable_map)
+                    dump = json.dumps(dumpable_map)
+                    wsock.send(dump)
 
                 except IndexError:
                     # If no telemetry has been received by the GUI
