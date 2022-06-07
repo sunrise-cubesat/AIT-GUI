@@ -894,8 +894,6 @@ def handle():
 
                     if not wsock.closed:
                         wsock.send(pad + struct.pack('>I', 0))
-                except Exception as e:
-                    log.error(f"{__name__} -> Encountered exception {e}")
         except geventwebsocket.WebSocketError:
             pass
         
@@ -915,8 +913,13 @@ def handle():
         for packet_type in packet_states.keys():
             for telem_type in packet_states[packet_type].keys():
                 for channel_name, value in packet_states[packet_type][telem_type].items():
-                    if (type(value) == tlm.FieldList) or (type(value) == bytes):
-                        packet_states[packet_type][telem_type][channel_name] = "Value not displayable"
+                    if isinstance(value, tlm.FieldList):
+                        val = value.canonical_form()
+                    elif isinstance(value, bytes):
+                        val = value.decode("ascii").rstrip("\x00")
+                    else:
+                        val = value
+                    packet_states[packet_type][telem_type][channel_name] = val
 
         #log.info(f"packet_states is {packet_states}")
         json_result =  json.dumps({'states': packet_states, 'counters': counters})
