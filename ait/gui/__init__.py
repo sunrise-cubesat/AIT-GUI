@@ -851,38 +851,36 @@ def handle():
                     #log.info("dntoeus: %s" % dntoeus)
                     #log.info("Counter: %s" % counter)
                     #log.info("Data: %s" % counter)
-                    for key in delta.keys():
-                        val = delta[key]
-                        val = "%s" % type(val)
-                        if (re.search(".*FieldList.*", val)):
-                            delta[key] = "Value not displayable"
-                            #log.info("Updated value of key: %s from delta" % key)
-                    #log.info("New Data Delta: %s" % delta)
 
-                    for key in dntoeus.keys():
-                        val = dntoeus[key]
-                        val = "%s" % type(val)
-                        if (re.search(".*FieldList.*", val)):
-                            dntoeus[key] = "Value not displayable"
-                            #log.info("Updated value of key: %s from dntoeus" % key)
-                    #log.info("New dntoeus: %s" % dntoeus)
+                    canonical_dntoeus_map = {}            
+                    for (field_name, val) in dntoeus.items():
+                        if isinstance(val, tlm.FieldList):
+                            val = val.canonical_form()
+                            log.debug(f"{__name__} -> Canonical => {field_name}: {val}")
+                        elif isinstance(val, bytes):
+                            val = val.decode("ascii").rstrip("\x00")
+                            log.debug(f"{__name__} -> Bytes => {field_name}: {val}")
+                        canonical_dntoeus_map[field_name] = val
 
-                    try:
-                        json.dumps({
-                            'packet': name,
-                            'data': delta,
-                            'dntoeus': dntoeus,
-                            'counter': counter})
-                    except:
-                        log.info("JSON DUMPS exception")
-                        continue
+                    canonical_delta_map = {}            
+                    for (field_name, val) in delta.items():
+                        if isinstance(val, tlm.FieldList):
+                            val = val.canonical_form()
+                            log.debug(f"{__name__} -> Canonical => {field_name}: {val}")
+                        elif isinstance(val, bytes):
+                            val = val.decode("ascii").rstrip("\x00")
+                            log.debug(f"{__name__} -> Bytes => {field_name}: {val}")
+                        canonical_delta_map[field_name] = val
 
-                    wsock.send(json.dumps({
+                    dump ={
                         'packet': name,
-                        'data': delta,
-                        'dntoeus': dntoeus,
+                        'data': canonical_delta_map,
+                        'dntoeus': canonical_dntoeus_map,
                         'counter': counter
-                    }))
+                    } 
+
+
+                    wsock.send(json.dumps(dump))
 
                 except IndexError:
                     # If no telemetry has been received by the GUI
@@ -896,8 +894,11 @@ def handle():
 
                     if not wsock.closed:
                         wsock.send(pad + struct.pack('>I', 0))
+                except Exception as e:
+                    log.error(f"{__name__} -> Encountered exception {e}")
         except geventwebsocket.WebSocketError:
             pass
+        
 
 
 @App.route('/tlm/latest', method='GET')
