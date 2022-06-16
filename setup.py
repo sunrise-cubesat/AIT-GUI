@@ -85,7 +85,7 @@ class CustomInstallCmd(install):
 
 setup(
     name = 'ait-gui',
-    version = '2.1.0+snr',
+    version = '2.2.0+snr',
     description = description,
     long_description = long_description,
     long_description_content_type = 'text/x-rst',
