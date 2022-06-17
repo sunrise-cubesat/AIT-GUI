@@ -114,25 +114,28 @@ class SessionStore (dict):
         """Creates a new SessionStore."""
         dict.__init__(self, *args, **kwargs)
 
-    def addTelemetry (self, uid, packet):
+    def addTelemetry (self, packet_metadata):
         """Adds a telemetry packet to all Sessions in the store."""
         #log.info(f"SessionStore.addTelemetry function recieved data with packet UID {uid} and data {packet}")
-        item = (uid, packet)
+        item = ( packet_metadata['packet_uid'], packet_metadata["user_data_field"])
         SessionStore.History.telemetry.append(item)
 
         #log.info(f"ADDING TELEMETRY FOR UID {uid}")
-        pkt_defn = getPacketDefn(uid)
+        pkt_defn = getPacketDefn(packet_metadata["packet_uid"])
         pkt_name = pkt_defn.name
+
+        packet = packet_metadata['user_data_field']
+        
         #log.info(f"PACKET NAME IS {pkt_name}")
-        delta, dntoeus = get_packet_delta(pkt_defn, packet)
+        delta, dntoeus = get_packet_delta(pkt_defn, packet_metadata['user_data_field'])
         #print(delta)
         dntoeus = replace_datetimes(dntoeus)
 
         for session in self.values():
             counter = session.updateCounter(pkt_name)
-            item = (pkt_name, delta, dntoeus, counter)
+            item = (packet_metadata, pkt_name, delta, dntoeus, counter)
             session.deltas.append(item)
-            item = (uid, packet, session.tlm_counters[pkt_name])
+            item = (packet_metadata, pkt_defn, session.tlm_counters[pkt_name])
             session.telemetry.append(item)
 
     def addMessage (self, msg):
@@ -329,7 +332,7 @@ class AITGUIPlugin(Plugin):
         msg = pickle.loads(msg)
         #log.info(f"process_telem_msg function recieved a tuple with values {msg[0]} and {msg[1]}")
         if playback.on == False:
-            Sessions.addTelemetry(msg[0], msg[1])
+            Sessions.addTelemetry(msg)
 
     def process_log_msg(self, msg):
         msg = msg.decode()
@@ -706,9 +709,8 @@ def handle():
         tlmdict = ait.core.tlm.getDefaultDict()
         while not wsock.closed:
             try:
-                uid, data = session.telemetry.popleft(timeout=30)
-                pkt_defn = getPacketDefn(uid)
-
+                packet_metadata, pkt_defn = session.telemetry.popleft(timeout=30)
+                data = packet_metadata.user_data_field
                 wsock.send(json.dumps({
                     'packet': pkt_defn.name,
                     'data': ait.core.tlm.Packet(pkt_defn, data=data).toJSON()
@@ -844,14 +846,8 @@ def handle():
         try:
             while not wsock.closed:
                 try:
-                    name, delta, dntoeus, counter = session.deltas.popleft(timeout=30)
-
-                    #log.info("Name: %s" % name)
-                    #log.info("Data Delta: %s" % delta)
-                    #log.info("dntoeus: %s" % dntoeus)
-                    #log.info("Counter: %s" % counter)
-                    #log.info("Data: %s" % counter)
-
+                    packet_metadata, packet_name, delta, dntoeus, counter = session.deltas.popleft(timeout=30)
+                    
                     canonical_dntoeus_map = {}            
                     for (field_name, val) in dntoeus.items():
                         if isinstance(val, tlm.FieldList):
@@ -873,10 +869,14 @@ def handle():
                         canonical_delta_map[field_name] = val
 
                     dump ={
-                        'packet': name,
+                        'packet': packet_name,
                         'data': canonical_delta_map,
                         'dntoeus': canonical_dntoeus_map,
-                        'counter': counter
+                        'counter': counter,
+                        'event_time_gps': packet_metadata["event_time_gps"],
+                        'vcid': packet_metadata["vcid"], 
+                        'processor_counter' : packet_metadata["processor_counter"], 
+                        'processor_name' : packet_metadata["processor_name"], 
                     } 
 
 
