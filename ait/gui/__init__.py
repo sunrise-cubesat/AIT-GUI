@@ -900,7 +900,7 @@ def handle():
 @App.route('/tlm/latest', method='GET')
 def handle():
     """Return latest telemetry packet to client"""
-    log.info("TLM/LATEST handle function executing")
+    log.debug("TLM/LATEST handle function executing")
     for pkt_type, state in packet_states.items():
         packet_states[pkt_type]['dntoeu'] = replace_datetimes(state['dntoeu'])
 
