@@ -868,15 +868,13 @@ def handle():
                             log.debug(f"{__name__} -> Bytes => {field_name}: {val}")
                         canonical_delta_map[field_name] = val
 
-                    dump ={
+                        metadata = {k:v for (k,v) in packet_metadata.items() if k != "user_data_field"}
+                    dump = {
                         'packet': packet_name,
                         'data': canonical_delta_map,
                         'dntoeus': canonical_dntoeus_map,
                         'counter': counter,
-                        'event_time_gps': packet_metadata["event_time_gps"],
-                        'vcid': packet_metadata["vcid"], 
-                        'processor_counter' : packet_metadata["processor_counter"], 
-                        'processor_name' : packet_metadata["processor_name"], 
+                        'metadata': metadata
                     } 
 
 
