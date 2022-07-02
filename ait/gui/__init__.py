@@ -307,18 +307,20 @@ class AITGUIPlugin(Plugin):
     def process(self, messages_input, topic=None):
         if topic == "log_stream":
             # log stream special case
-            messages_input = (MessageType.LOG, [messages_input])
+            message_type = MessageType.LOG
+            message = messages_input
+        else:
+            message_type = messages_input[0]
+            message = messages_input[1]
 
-        message_type, messages = messages_input
-        
-        for message in messages:
-            # TODO use `match` in Python 3.10 for Haskell like goodness
-            if message_type is MessageType.REAL_TIME_TELEMETRY:
-                self.process_telem_msg(message)
-            elif message_type is MessageType.LOG:
-                self.process_log_msg(message)
-            elif isinstance(message_type, MessageType):
-                self.process_variable_msg(message_input)
+        # TODO use `match` in Python 3.10 for Haskell like goodness
+        if message_type is MessageType.REAL_TIME_TELEMETRY:
+            for packet in message:
+                self.process_telem_msg(packet)
+        elif message_type is MessageType.LOG:
+            self.process_log_msg(message)
+        elif isinstance(message_type, MessageType):
+            self.process_variable_msg(message)
 
     def process_telem_msg(self, msg):
         #log.info(f"process_telem_msg function recieved a tuple with values {msg[0]} and {msg[1]}")
