@@ -310,8 +310,7 @@ class AITGUIPlugin(Plugin):
             message_type = MessageType.LOG
             message = messages_input
         else:
-            message_type = messages_input[0]
-            message = messages_input[1]
+            message_type, message = messages_input
 
         # TODO use `match` in Python 3.10 for Haskell like goodness
         if message_type is MessageType.REAL_TIME_TELEMETRY:
