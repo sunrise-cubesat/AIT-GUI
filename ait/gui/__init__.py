@@ -23,6 +23,7 @@ import pkg_resources
 
 import ait.core
 from ait.core import api, cmd, db, dtype, dmc, evr, limits, log, notify, pcap, tlm, gds, util
+from ait.core.message_types import MessageType
 from ait.core.server.plugin import Plugin
 import copy
 from datetime import datetime, timedelta
@@ -43,6 +44,7 @@ class Session (object):
         self.messages        = api.GeventDeque(maxlen=maxlen)
         self.telemetry       = api.GeventDeque(maxlen=maxlen)
         self.deltas          = api.GeventDeque(maxlen=maxlen)
+        self.variable_messages = api.GeventDeque(maxlen=maxlen)
         self.tlm_counters    = { }
         self._maxlen         = maxlen
         self._store          = store
@@ -144,6 +146,12 @@ class SessionStore (dict):
         for session in self.values():
             session.messages.append(msg)
 
+    def addVariableMessage(self, msg):
+        """Adds a variable message to all Sessions in the store."""
+        SessionStore.History.variable_messages.append(msg)
+        for session in self.values():
+            session.variable_messages.append(msg)
+            
     def addEvent (self, name, data):
         """Adds an event to all Sessions in the store."""
         event = { 'name': name, 'data': data }
@@ -296,43 +304,30 @@ class AITGUIPlugin(Plugin):
 
         gevent.spawn(self.init)
 
-    def process(self, input_data, topic=None):
-        # msg is going to be a tuple from the ait_packet_handler
-        # (packet_uid, packet)
-        # need to handle log/telem messages differently based on topic
-        # Look for topic in list of stream log and telem stream names first.
-        # If those lists don't exist or topic not in them, try matching text
-        # in topic name.
+    def process(self, messages_input, topic=None):
+        if topic == "log_stream":
+            # log stream special case
+            message_type = MessageType.LOG
+            message = messages_input
+        else:
+            message_type, message = messages_input
 
-        processed = False
-
-        if hasattr(self, 'log_stream_names'):
-            if topic in self.log_stream_names:
-                self.process_log_msg(input_data)
-                processed = True
-
-        if hasattr(self, 'telem_stream_names'):
-            if topic in self.telem_stream_names:
-               self.process_telem_msg(input_data)
-               processed = True
-
-        if not processed:
-            if "telem_stream" in topic:
-                self.process_telem_msg(input_data)
-                processed = True
-
-            elif topic == "log_stream":
-                self.process_log_msg(input_data)
-                processed = True
-
-        if not processed:
-            raise ValueError('Topic of received message not recognized as telem or log stream.')
+        # TODO use `match` in Python 3.10 for Haskell like goodness
+        if message_type is MessageType.REAL_TIME_TELEMETRY:
+            for packet in message:
+                self.process_telem_msg(packet)
+        elif message_type is MessageType.LOG:
+            self.process_log_msg(message)
+        elif isinstance(message_type, MessageType):
+            self.process_variable_msg(message)
 
     def process_telem_msg(self, msg):
-        msg = pickle.loads(msg)
         #log.info(f"process_telem_msg function recieved a tuple with values {msg[0]} and {msg[1]}")
         if playback.on == False:
             Sessions.addTelemetry(msg)
+
+    def process_variable_msg(self, msg):
+        Sessions.addVariableMessage(msg)
 
     def process_log_msg(self, msg):
         msg = msg.decode()
@@ -869,6 +864,9 @@ def handle():
                         canonical_delta_map[field_name] = val
 
                         metadata = {k:v for (k,v) in packet_metadata.items() if k != "user_data_field"}
+                        t = metadata['event_time_gps'] = metadata['event_time_gps']
+                        t.format='iso'
+                        metadata['event_time_gps'] = str(t)
                     dump = {
                         'packet': packet_name,
                         'data': canonical_delta_map,
@@ -895,7 +893,37 @@ def handle():
         except geventwebsocket.WebSocketError:
             pass
         
+@App.route('/variable_messages')
+def handle():
+    with Sessions.current() as session:
+        # A null-byte pad ensures wsock is treated as binary.
+        pad   = bytearray(1)
+        wsock = bottle.request.environ.get('wsgi.websocket')
 
+        # if not wsock:
+        #     bottle.abort(400, 'Expected WebSocket request.')
+
+        try:
+            while not wsock.closed:
+                try:
+                    message_type, message = session.variable_messages.popleft(timeout=30)
+                    dump = {message_type.name: message}
+                    wsock.send(json.dumps(dump))
+
+                except IndexError:
+                    # If no telemetry has been received by the GUI
+                    # server after timeout seconds, "probe" the client
+                    # websocket connection to make sure it's still
+                    # active and if so, keep it alive.  This is
+                    # accomplished by sending a packet with an ID of
+                    # zero and no packet data.  Packet ID zero with no
+                    # data is ignored by AIT GUI client-side
+                    # Javascript code.
+
+                    if not wsock.closed:
+                        wsock.send(pad + struct.pack('>I', 0))
+        except geventwebsocket.WebSocketError:
+            pass
 
 @App.route('/tlm/latest', method='GET')
 def handle():
@@ -906,8 +934,6 @@ def handle():
 
     with Sessions.current() as session:
         counters = session.tlm_counters
-        #log.info(f"packet_states.keys is {packet_states.keys()}")
-        #log.info(f"packet type in question is: {packet_states['BCT_XACT_ADCS_ORBIT_REFS_TELEMETRY']}")
         for packet_type in packet_states.keys():
             for telem_type in packet_states[packet_type].keys():
                 for channel_name, value in packet_states[packet_type][telem_type].items():
