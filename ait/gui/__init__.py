@@ -443,15 +443,15 @@ class AITGUIPlugin(Plugin):
             for msg in messages:
                 log.error(msg)
         else:
-            encoded = cmdobj.encode()
+            d = cmdobj.encode()
 
             if CMD_API._verbose:
                 size = len(cmdobj.name)
                 pad  = (size - len(cmdobj.name) + 1) * ' '
-                gds.hexdump(encoded, preamble=cmdobj.name + ':' + pad)
+                gds.hexdump(d['encoded'], preamble=cmdobj.name + ':' + pad)
 
             try:
-                self.publish(encoded)
+                self.publish(d, 'command_stream')
                 status = True
 
                 with pcap.open(CMD_API.CMD_HIST_FILE, 'a') as output:
